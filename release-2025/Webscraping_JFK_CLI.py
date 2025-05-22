@@ -96,7 +96,6 @@ def main(url, output_dir, skip_existing=True, zip_result=False):
     print(f"[DONE] Downloaded {len(downloaded_files)} PDF(s) to '{output_dir}'")
 
     if zip_result and downloaded_files:
-        #zip_path = os.path.join(output_dir, 'jfk_pdfs.zip')
         zip_path = f"{os.path.basename(output_dir.rstrip('/'))}.zip"
         zip_downloaded_pdfs(downloaded_files, zip_path)
 
