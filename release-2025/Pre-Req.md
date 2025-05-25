@@ -1,11 +1,11 @@
 ## Libraries
-`pip install requests`
-`pip install beautifulsoup4`
-`pip install tqdm`
+`pip install requests`  
+`pip install beautifulsoup4`  
+`pip install tqdm`  
 
 
 ## Using an IDE?
-execute the `Webscraping_JFK.py`
+execute the `Webscraping_JFK.py`  
 
 
 ## Using CLI?
