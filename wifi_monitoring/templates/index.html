@@ -1,0 +1,234 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WiFi Activity Monitor</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    html, body {
+      height: 100%;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      background: var(--bs-body-bg, #f4f6f9);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--bs-body-color, #212529);
+    }
+    main {
+      flex: 1 0 auto;
+      padding: 2rem;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+      font-weight: bold;
+    }
+    .device-section {
+      display: flex;
+      flex-direction: column;
+      background: var(--bs-card-bg, #ffffff);
+      padding: 1rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      margin-bottom: 2rem;
+    }
+    .table-wrapper {
+      flex-grow: 1;
+      overflow-x: auto;
+      overflow-y: auto;
+    }
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .form-control, .form-select { max-width: 200px; }
+    .source-sniffed { color: #0d6efd; font-weight: bold; }
+    .source-scanned { color: #198754; font-weight: bold; }
+    .status-online { font-weight: bold; color: green; }
+    .status-offline { font-weight: bold; color: red; }
+    footer {
+      flex-shrink: 0;
+      text-align: center;
+      padding: 1rem;
+      font-size: 0.9rem;
+      background-color: #e9ecef;
+      color: #555;
+    }
+    .dark-mode {
+      --bs-body-bg: #212529;
+      --bs-body-color: #f8f9fa;
+      --bs-card-bg: #343a40;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>🛰️ WiFi Activity Monitor</h1>
+    <div class="container">
+      <div class="controls">
+        <div>
+          <label for="filter-ip" class="form-label">Filter IP:</label>
+          <input type="text" id="filter-ip" class="form-control" placeholder="192.168.1.1" />
+        </div>
+        <div>
+          <label for="filter-status" class="form-label">Status:</label>
+          <select id="filter-status" class="form-select">
+            <option value="">All</option>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+          </select>
+        </div>
+        <div class="d-flex align-items-end gap-2">
+          <button class="btn btn-primary" onclick="exportTable('ipv4-table')">Export IPv4</button>
+          <button class="btn btn-primary" onclick="exportTable('ipv6-table')">Export IPv6</button>
+          <button class="btn btn-outline-dark" onclick="toggleDarkMode()">🌓 Dark Mode</button>
+        </div>
+      </div>
+
+      <div class="device-section" id="ipv4-section">
+        <h4 class="text-primary">🟢 Active IPv4 Devices</h4>
+        <div class="table-wrapper">
+          <table class="table table-bordered table-hover align-middle" id="ipv4-table">
+            <thead class="table-light">
+              <tr>
+                <th>IP</th>
+                <th>MAC</th>
+                <th>Interface</th>
+                <th>Status</th>
+                <th>Last Seen</th>
+                <th>Last Online</th>
+                <th>Last Offline</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <canvas id="ipv4Chart" height="80"></canvas>
+      </div>
+
+      <div class="device-section" id="ipv6-section">
+        <h4 class="text-secondary">🌐 Active IPv6 Devices</h4>
+        <div class="table-wrapper">
+          <table class="table table-bordered table-hover align-middle" id="ipv6-table">
+            <thead class="table-light">
+              <tr>
+                <th>IP</th>
+                <th>MAC</th>
+                <th>Interface</th>
+                <th>Status</th>
+                <th>Last Seen</th>
+                <th>Last Online</th>
+                <th>Last Offline</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <canvas id="ipv6Chart" height="80"></canvas>
+      </div>
+    </div>
+  <div id="debug-log" style="font-size: 0.9rem; margin-top: 1rem; color: #888;"></div>
+</main>
+
+  <footer>&copy; 2025 WiFi Monitor by Anani Assoutovi | Real-time Network Device Tracker | All Rights Reserved</footer>
+
+  <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+console.log("[SocketIO] Connecting...");
+socket.on("connect", () => document.getElementById("debug-log").innerText = "[✓] Connected to WebSocket");
+socket.on("disconnect", () => document.getElementById("debug-log").innerText += "\n[!] Disconnected from WebSocket");
+    let ipv4Data = [], ipv6Data = [];
+
+    function renderTable(tableId, data) {
+      const tbody = document.querySelector(`#${tableId} tbody`);
+      tbody.innerHTML = "";
+      data.forEach(device => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${device.ip}</td>
+          <td>${device.mac}</td>
+          <td>${device.iface || "-"}</td>
+          <td class="${device.status === 'online' ? 'status-online' : 'status-offline'}">${device.status}</td>
+          <td>${device.last_seen || "-"}</td>
+          <td>${device.last_online || "-"}</td>
+          <td>${device.last_offline || "-"}</td>
+          <td class="${device.iface === 'unknown' ? 'source-sniffed' : 'source-scanned'}">${device.iface === 'unknown' ? 'Sniffed' : 'Scanned'}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    function exportTable(tableId) {
+      const table = document.getElementById(tableId);
+      let csv = [];
+      for (let row of table.rows) {
+        let cols = [...row.cells].map(cell => `"${cell.innerText}"`);
+        csv.push(cols.join(","));
+      }
+      const blob = new Blob([csv.join("\n")], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = tableId + ".csv";
+      link.click();
+    }
+
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark-mode");
+    }
+
+    function applyFilters() {
+      const ipFilter = localStorage.getItem("filter_ip") || "";
+      const statusFilter = localStorage.getItem("filter_status") || "";
+
+      document.getElementById("filter-ip").value = ipFilter;
+      document.getElementById("filter-status").value = statusFilter;
+
+      const ipv4Filtered = ipv4Data.filter(d =>
+        (!ipFilter || d.ip.toLowerCase().includes(ipFilter)) &&
+        (!statusFilter || d.status === statusFilter)
+      );
+      const ipv6Filtered = ipv6Data.filter(d =>
+        (!ipFilter || d.ip.toLowerCase().includes(ipFilter)) &&
+        (!statusFilter || d.status === statusFilter)
+      );
+
+      renderTable("ipv4-table", ipv4Filtered);
+      renderTable("ipv6-table", ipv6Filtered);
+    }
+
+    socket.on("devices", data => {
+  document.getElementById("debug-log").innerText = `[IPv4] Received ${data.length} devices at ${new Date().toLocaleTimeString()}`;
+      ipv4Data = data;
+      applyFilters();
+    });
+
+    socket.on("ipv6_devices", data => {
+  document.getElementById("debug-log").innerText += `\n[IPv6] Received ${data.length} devices at ${new Date().toLocaleTimeString()}`;
+      ipv6Data = data;
+      applyFilters();
+    });
+
+    document.getElementById("filter-ip").addEventListener("input", () => {
+      localStorage.setItem("filter_ip", document.getElementById("filter-ip").value);
+      applyFilters();
+    });
+    document.getElementById("filter-status").addEventListener("change", () => {
+      localStorage.setItem("filter_status", document.getElementById("filter-status").value);
+      applyFilters();
+    });
+
+    setInterval(() => applyFilters(), 10000);
+  </script>
+</body>
+</html>
